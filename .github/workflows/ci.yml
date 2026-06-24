@@ -24,4 +24,5 @@ jobs:
       # cross-platform WASI/@emnapi optionals that strict `npm ci` rejects on Linux
       - run: npm install --no-audit --no-fund
       - run: npx tsc --noEmit
+      - run: npm run lint
       - run: npm run build
