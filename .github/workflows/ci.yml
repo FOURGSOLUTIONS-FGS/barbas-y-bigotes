@@ -19,11 +19,18 @@ jobs:
       NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
       NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      # VAPID: los consume scripts/check-push.ts (smoke del emisor). Deben existir
+      # como secrets del repo en GitHub Actions (los mismos de .env.local / Vercel).
+      VAPID_SUBJECT: ${{ secrets.VAPID_SUBJECT }}
+      NEXT_PUBLIC_VAPID_PUBLIC_KEY: ${{ secrets.NEXT_PUBLIC_VAPID_PUBLIC_KEY }}
+      VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
         with:
-          node-version: 20
+          # Node 24: los scripts/check-*.ts corren con `node script.ts` directo
+          # (type stripping nativo, ≥23.6). Node 20 no soporta TS sin build.
+          node-version: 24
           cache: npm
       # npm install (not ci) to match Vercel — Windows-generated lock omits some
       # cross-platform WASI/@emnapi optionals that strict `npm ci` rejects on Linux
@@ -31,3 +38,6 @@ jobs:
       - run: npx tsc --noEmit
       - run: npm run lint
       - run: npm run build
+      # Tests de plata (funciones puras) + smoke de push: un fallo de la
+      # matemática de cobro/caja/tz pinta el CI rojo.
+      - run: npm test
