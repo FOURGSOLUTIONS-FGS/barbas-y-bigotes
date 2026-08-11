@@ -48,7 +48,11 @@ jobs:
         env:
           DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: |
-          pg_dump "$DB_URL" --no-owner --no-privileges -f backup.sql
+          # /usr/bin/pg_dump es un wrapper que despacha al pg16 preinstalado y
+          # choca con el server pg17. Llamamos al binario versionado más alto.
+          PGDUMP=$(ls -1 /usr/lib/postgresql/*/bin/pg_dump | sort -V | tail -1)
+          echo "Usando $("$PGDUMP" --version)"
+          "$PGDUMP" "$DB_URL" --no-owner --no-privileges -f backup.sql
           gzip backup.sql
 
       - name: Subir artifact
