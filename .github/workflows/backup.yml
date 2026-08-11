@@ -1,0 +1,60 @@
+name: backup
+
+# Respaldo semanal de la DB — Supabase Free NO trae backups automáticos.
+# pg_dump completo (esquema + datos) → artifact PRIVADO del repo, 90 días de
+# retención (histórico rodante). Corre lunes de madrugada (tráfico bajo).
+#
+# REQUIERE un secret del repo: SUPABASE_DB_URL
+#   Supabase → Project Settings → Database → Connection string → "Session pooler"
+#   (el de IPv4, incluye la contraseña). El runner de GitHub es IPv4: la conexión
+#   "Direct" es IPv6 y falla; usa SIEMPRE la del pooler en modo sesión.
+# Sin ese secret el job se salta solito (no pinta rojo).
+#
+# ponytail: artifact de repo privado alcanza para el piloto; subir a storage
+# cifrado externo si el dato crece o se necesita retención larga.
+
+on:
+  schedule:
+    - cron: "0 6 * * 1" # lunes 06:00 UTC = 1:00 a.m. Bogotá
+  workflow_dispatch: {}
+
+jobs:
+  dump:
+    name: dump
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verificar secret
+        id: check
+        env:
+          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          if [ -z "$DB_URL" ]; then
+            echo "⚠️ Falta el secret SUPABASE_DB_URL — salto el backup."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Instalar cliente PostgreSQL 17
+        if: steps.check.outputs.run == 'true'
+        run: |
+          sudo sh -c 'echo "deb https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+          curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/pgdg.gpg
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client-17
+
+      - name: pg_dump
+        if: steps.check.outputs.run == 'true'
+        env:
+          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          pg_dump "$DB_URL" --no-owner --no-privileges -f backup.sql
+          gzip backup.sql
+
+      - name: Subir artifact
+        if: steps.check.outputs.run == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: db-backup-${{ github.run_id }}
+          path: backup.sql.gz
+          retention-days: 90

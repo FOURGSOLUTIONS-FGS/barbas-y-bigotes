@@ -1,0 +1,20 @@
+name: keepalive
+
+# Anti-pausa de Supabase Free: el proyecto se pausa tras 7 días SIN actividad.
+# Un ping a /api/health (que hace un read mínimo a la DB con la anon key, sin
+# exponer datos) cuenta como actividad. Lunes y jueves → hueco máximo de 4 días,
+# sin depender del fin de mes. Sin secrets: /api/health es público. Un 503 (DB
+# caída o ya pausada) pinta el run rojo = alerta gratis.
+# Ojo: PREVIENE la pausa; no la revierte (una vez pausada, se reanuda a mano).
+
+on:
+  schedule:
+    - cron: "0 13 * * 1,4" # 13:00 UTC = 8:00 a.m. Bogotá — lunes y jueves
+  workflow_dispatch: {}
+
+jobs:
+  ping:
+    name: ping
+    runs-on: ubuntu-latest
+    steps:
+      - run: curl -fsS --retry 3 https://barbasybigotes.com/api/health
