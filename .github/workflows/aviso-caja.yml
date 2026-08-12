@@ -1,0 +1,28 @@
+name: aviso-caja
+
+# "La caja sigue abierta": todas las noches a las 21:05 de Bogotá (02:05 UTC)
+# le pega a /api/avisos/caja, que manda un push a la SEDE por cada caja que
+# siga en 'abierta' (la barbería cierra a las 20:00). Nace del caso real de la
+# caja que quedó 22 días abierta sin que nadie lo notara.
+# Requiere el secret PUSH_CRON_SECRET (el mismo de Vercel/.env.local).
+
+on:
+  schedule:
+    - cron: "5 2 * * *" # 02:05 UTC = 21:05 Bogotá (UTC-5 fijo, sin DST)
+  workflow_dispatch: {}
+
+jobs:
+  avisar:
+    name: avisar
+    runs-on: ubuntu-latest
+    steps:
+      - name: Avisar cajas abiertas
+        env:
+          SECRET: ${{ secrets.PUSH_CRON_SECRET }}
+        run: |
+          if [ -z "$SECRET" ]; then
+            echo "⚠️ Falta el secret PUSH_CRON_SECRET — salto el aviso."
+            exit 0
+          fi
+          curl -fsS -X POST "https://barbasybigotes.com/api/avisos/caja" \
+            -H "x-push-secret: $SECRET"
