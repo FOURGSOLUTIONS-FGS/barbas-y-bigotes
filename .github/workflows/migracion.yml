@@ -1,0 +1,53 @@
+name: Aplicar migración
+
+# Aplica UN archivo de supabase/migrations contra la base de producción, con la
+# misma conexión que ya usa el backup semanal (secrets.SUPABASE_DB_URL). Solo a
+# mano (workflow_dispatch) y solo archivos de esa carpeta: es el camino para
+# aplicar una migración sin pasar por el SQL Editor ni por un token personal.
+#
+#   gh workflow run migracion.yml -f archivo=0079_reservas_origen_web.sql
+#
+# Todo el archivo va en UNA transacción: si algo falla, no queda a medias.
+
+on:
+  workflow_dispatch:
+    inputs:
+      archivo:
+        description: "Archivo dentro de supabase/migrations (p. ej. 0079_reservas_origen_web.sql)"
+        required: true
+        type: string
+
+concurrency:
+  group: migracion
+  cancel-in-progress: false
+
+jobs:
+  aplicar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validar el archivo
+        env:
+          ARCHIVO: ${{ inputs.archivo }}
+        run: |
+          case "$ARCHIVO" in
+            */*|*..*|"") echo "Solo se aceptan archivos de supabase/migrations"; exit 1;;
+          esac
+          test -f "supabase/migrations/$ARCHIVO" || { echo "No existe supabase/migrations/$ARCHIVO"; exit 1; }
+          echo "Se va a aplicar supabase/migrations/$ARCHIVO"
+
+      - name: Aplicar (una transacción)
+        env:
+          ARCHIVO: ${{ inputs.archivo }}
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          command -v psql >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client; }
+          psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 --single-transaction -f "supabase/migrations/$ARCHIVO"
+
+      - name: Columnas de reservas después (para leer en el log)
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          psql "$SUPABASE_DB_URL" -Atc "select string_agg(column_name, ', ' order by ordinal_position) from information_schema.columns where table_schema='public' and table_name='reservas'"
